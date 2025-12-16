@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>New Booking Request</title>
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background: #8B4513; color: white; padding: 20px; text-align: center; }
+        .content { background: #f9f9f9; padding: 20px; border: 1px solid #ddd; }
+        .booking-details { background: white; padding: 15px; margin: 15px 0; border-left: 4px solid #8B4513; }
+        .detail-row { margin: 10px 0; }
+        .label { font-weight: bold; color: #8B4513; }
+        .button { display: inline-block; padding: 12px 24px; background: #8B4513; color: white; text-decoration: none; border-radius: 5px; margin: 10px 5px; }
+        .footer { text-align: center; margin-top: 20px; color: #666; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🙏 New Booking Request</h1>
+        </div>
+        <div class="content">
+            <p>Dear {{ provider_name }},</p>
+            <p>You have received a new booking request from <strong>{{ user_name }}</strong>.</p>
+            
+            <div class="booking-details">
+                <h3>Booking Details:</h3>
+                <div class="detail-row">
+                    <span class="label">टिप्पणी:</span> {{ notes }}
+                </div>
+                {% endif %}
+            </div>
+            
+            <p>कृपया यो बुकिंग अनुरोध स्वीकार वा अस्वीकार गर्न आफ्नो ड्यासबोर्डमा लग इन गर्नुहोस्।</p>
+            
+            <div style="text-align: center; margin: 20px 0;">
+                <a href="{{ booking_url }}" class="button">बुकिंग हेर्नुहोस्</a>
+            </div>
+        </div>
+        <div class="footer">
+            <p>© 2025 MeroPanditLama. सर्वाधिकार सुरक्षित।</p>
+            <p>यो स्वचालित सन्देश हो, कृपया जवाफ नदिनुहोस्।</p>
+        </div>
+    </div>
+</body>
+</html>
