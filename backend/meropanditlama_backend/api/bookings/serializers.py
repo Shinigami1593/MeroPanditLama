@@ -11,79 +11,56 @@ from api.accounts.serializers import UserSerializer
 class BookingCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating bookings"""
     
-    provider_id = serializers.IntegerField(write_only=True)
-    service_id = serializers.IntegerField(write_only=True)
-    
     class Meta:
         model = Booking
         fields = [
-            'provider_id', 'service_id', 'requested_datetime',
-            'duration_minutes', 'notes'
+            'provider', 'service', 'requested_date',
+            'time_slot', 'duration_minutes', 'notes'
         ]
     
-    def validate_provider_id(self, value):
+    def validate_provider(self, value):
         """Validate provider exists and is verified"""
-        try:
-            provider = ServiceProvider.objects.get(id=value, verified=True)
-        except ServiceProvider.DoesNotExist:
-            raise serializers.ValidationError("Provider not found or not verified")
+        if not value.verified:
+            raise serializers.ValidationError("Provider is not verified")
         return value
     
-    def validate_service_id(self, value):
-        """Validate service exists"""
-        try:
-            Service.objects.get(id=value)
-        except Service.DoesNotExist:
-            raise serializers.ValidationError("Service not found")
-        return value
-    
-    def validate_requested_datetime(self, value):
-        """Validate booking is at least 24 hours in advance"""
-        if value < timezone.now() + timedelta(hours=24):
+    def validate_requested_date(self, value):
+        """Validate booking is for a future date"""
+        if value < timezone.now().date():
             raise serializers.ValidationError(
-                "Bookings must be made at least 24 hours in advance"
+                "Booking date must be in the future"
             )
         return value
     
     def validate(self, attrs):
         """Check for booking conflicts"""
-        provider = ServiceProvider.objects.get(id=attrs['provider_id'])
-        requested_dt = attrs['requested_datetime']
-        duration = attrs['duration_minutes']
-        end_dt = requested_dt + timedelta(minutes=duration)
+        provider = attrs['provider']
+        requested_date = attrs['requested_date']
+        time_slot = attrs['time_slot']
         
-        # Check for conflicting bookings
+        # Check for conflicting bookings on same date and time slot
         conflicts = Booking.objects.filter(
             provider=provider,
+            requested_date=requested_date,
+            time_slot=time_slot,
             status__in=['pending', 'confirmed']
-        ).filter(
-            Q(requested_datetime__lt=end_dt) &
-            Q(requested_datetime__gte=requested_dt - timedelta(minutes=60))
         )
         
         if conflicts.exists():
             raise serializers.ValidationError({
-                'requested_datetime': 'This time slot is not available. Please choose another time.'
+                'time_slot': 'This time slot is already booked. Please choose another time.'
             })
         
         return attrs
     
     def create(self, validated_data):
         """Create booking"""
-        provider = ServiceProvider.objects.get(id=validated_data.pop('provider_id'))
-        service = Service.objects.get(id=validated_data.pop('service_id'))
         user = self.context['request'].user
         
         booking = Booking.objects.create(
             user=user,
-            provider=provider,
-            service=service,
             **validated_data
         )
-        
-        # Send email notification to provider
-        from api.notifications.utils import send_booking_notification
-        send_booking_notification(booking, 'requested', provider.user)
         
         return booking
 
@@ -94,16 +71,18 @@ class BookingSerializer(serializers.ModelSerializer):
     service = ServiceSerializer(read_only=True)
     provider_name = serializers.SerializerMethodField()
     provider_phone = serializers.SerializerMethodField()
+    provider_photo = serializers.SerializerMethodField()
     provider_religion = serializers.CharField(source='provider.religion_type', read_only=True)
     can_cancel = serializers.ReadOnlyField()
+    time_slot_display = serializers.CharField(source='get_time_slot_display', read_only=True)
     
     class Meta:
         model = Booking
         fields = [
-            'id', 'user', 'provider_name', 'provider_phone', 'provider_religion',
-            'service', 'requested_datetime', 'duration_minutes',
-            'status', 'notes', 'cancellation_reason',
-            'can_cancel', 'created_at', 'updated_at'
+            'id', 'user', 'provider_name', 'provider_phone', 'provider_photo',
+            'provider_religion', 'service', 'requested_date', 'time_slot', 
+            'time_slot_display', 'duration_minutes', 'status', 'notes', 
+            'cancellation_reason', 'can_cancel', 'created_at', 'updated_at'
         ]
     
     def get_provider_name(self, obj):
@@ -111,6 +90,12 @@ class BookingSerializer(serializers.ModelSerializer):
     
     def get_provider_phone(self, obj):
         return obj.provider.user.phone
+    
+    def get_provider_photo(self, obj):
+        """Get provider's profile photo"""
+        if obj.provider.user.profile_photo:
+            return obj.provider.user.profile_photo.url
+        return None
 
 class BookingListSerializer(serializers.ModelSerializer):
     """Simplified serializer for listing bookings"""
@@ -118,12 +103,14 @@ class BookingListSerializer(serializers.ModelSerializer):
     provider_name = serializers.SerializerMethodField()
     service_name = serializers.CharField(source='service.name', read_only=True)
     user_name = serializers.SerializerMethodField()
+    time_slot_display = serializers.CharField(source='get_time_slot_display', read_only=True)
     
     class Meta:
         model = Booking
         fields = [
             'id', 'user_name', 'provider_name', 'service_name',
-            'requested_datetime', 'duration_minutes', 'status', 'created_at'
+            'requested_date', 'time_slot', 'time_slot_display',
+            'duration_minutes', 'status', 'created_at'
         ]
     
     def get_provider_name(self, obj):

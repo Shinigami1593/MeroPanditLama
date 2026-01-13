@@ -6,6 +6,12 @@ from api.accounts.models import User
 class Booking(models.Model):
     """Booking model for service requests"""
     
+    TIME_SLOT_CHOICES = [
+        ('morning', 'Morning (8am - 12pm)'),
+        ('afternoon', 'Afternoon (12pm - 4pm)'),
+        ('evening', 'Evening (4pm - 8pm)'),
+    ]
+    
     STATUS_CHOICES = [
         ('pending', 'Pending'),
         ('confirmed', 'Confirmed'),
@@ -20,22 +26,29 @@ class Booking(models.Model):
         limit_choices_to={'role': 'user'}
     )
     provider = models.ForeignKey(
-        "providers.ServiceProvider",  # <- string reference
+        "providers.ServiceProvider",
         on_delete=models.CASCADE,
         related_name='bookings'
     )
     service = models.ForeignKey(
-        "providers.Service",  # <- string reference
+        "providers.Service",
         on_delete=models.SET_NULL,
         null=True,
         related_name='bookings'
     )
-    requested_datetime = models.DateTimeField(
+    requested_date = models.DateField(
         db_index=True,
-        help_text="Requested service date and time"
+        help_text="Requested service date"
+    )
+    time_slot = models.CharField(
+        max_length=10,
+        choices=TIME_SLOT_CHOICES,
+        default='morning',
+        help_text="Preferred time slot"
     )
     duration_minutes = models.IntegerField(
-        default=60,
+        null=True,
+        blank=True,
         validators=[MinValueValidator(30)],
         help_text="Service duration in minutes"
     )
@@ -58,7 +71,7 @@ class Booking(models.Model):
         indexes = [
             models.Index(fields=['user', 'status']),
             models.Index(fields=['provider', 'status']),
-            models.Index(fields=['requested_datetime', 'status']),
+            models.Index(fields=['requested_date', 'status']),
         ]
     
     def __str__(self):
@@ -66,10 +79,16 @@ class Booking(models.Model):
     
     @property
     def is_past(self):
-        return self.requested_datetime < timezone.now()
+        """Check if booking date has passed"""
+        if self.requested_date is None:
+            return False
+        return self.requested_date < timezone.now().date()
     
     @property
     def can_cancel(self):
+        """Check if booking can be cancelled"""
+        if self.requested_date is None:
+            return False
         return self.status in ['pending', 'confirmed'] and not self.is_past
     
     def save(self, *args, **kwargs):
@@ -82,18 +101,17 @@ class Booking(models.Model):
         
         super().save(*args, **kwargs)
         
-        from api.providers.models import AvailabilitySlot  # import inside method to avoid circular import
+        from api.providers.models import AvailabilitySlot
+        
         if self.status == 'confirmed' and old_status != 'confirmed':
+            # Mark availability slot as booked
             AvailabilitySlot.objects.filter(
                 provider=self.provider,
-                date=self.requested_datetime.date(),
-                start_time__lte=self.requested_datetime.time(),
-                end_time__gte=self.requested_datetime.time()
+                date=self.requested_date
             ).update(is_booked=True)
         elif self.status in ['cancelled', 'completed'] and old_status == 'confirmed':
+            # Mark availability slot as available
             AvailabilitySlot.objects.filter(
                 provider=self.provider,
-                date=self.requested_datetime.date(),
-                start_time__lte=self.requested_datetime.time(),
-                end_time__gte=self.requested_datetime.time()
+                date=self.requested_date
             ).update(is_booked=False)

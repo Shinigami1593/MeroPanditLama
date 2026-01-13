@@ -10,8 +10,6 @@ from .serializers import (
     BookingSerializer, BookingListSerializer,
     BookingCreateSerializer, BookingCancelSerializer
 )
-from api.accounts.permissions import IsProvider
-from api.notifications.utils import send_booking_notification
 
 class BookingViewSet(viewsets.ModelViewSet):
     """Booking management endpoints"""
@@ -28,18 +26,18 @@ class BookingViewSet(viewsets.ModelViewSet):
             # Provider sees bookings for their services
             return Booking.objects.filter(
                 provider__user=user
-            ).select_related('user', 'provider__user', 'service')
+            ).select_related('user', 'provider__user', 'service').order_by('-created_at')
         else:
             # Regular user sees their own bookings
             return Booking.objects.filter(
                 user=user
-            ).select_related('user', 'provider__user', 'service')
+            ).select_related('user', 'provider__user', 'service').order_by('-created_at')
     
     def get_serializer_class(self):
         if self.action == 'create':
             return BookingCreateSerializer
         elif self.action == 'list':
-            return BookingListSerializer
+            return BookingSerializer
         return BookingSerializer
     
     def create(self, request, *args, **kwargs):
@@ -49,16 +47,18 @@ class BookingViewSet(viewsets.ModelViewSet):
                 'error': 'Only users can create bookings'
             }, status=status.HTTP_403_FORBIDDEN)
         
-        serializer = self.get_serializer(data=request.data)
+        serializer = self.get_serializer(data=request.data, context={'request': request})
         if serializer.is_valid():
             booking = serializer.save()
+            # Refresh to get related objects
+            booking = Booking.objects.select_related('user', 'provider__user', 'service').get(pk=booking.pk)
             return Response({
                 'message': 'Booking request sent successfully',
                 'booking': BookingSerializer(booking).data
             }, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
-    @action(detail=True, methods=['post'], permission_classes=[IsProvider])
+    @action(detail=True, methods=['post'])
     def confirm(self, request, pk=None):
         """Confirm a booking (Provider only)"""
         booking = self.get_object()
@@ -77,15 +77,12 @@ class BookingViewSet(viewsets.ModelViewSet):
         booking.status = 'confirmed'
         booking.save()
         
-        # Send confirmation email to user
-        send_booking_notification(booking, 'confirmed', booking.user)
-        
         return Response({
             'message': 'Booking confirmed successfully',
             'booking': BookingSerializer(booking).data
         })
     
-    @action(detail=True, methods=['post'], permission_classes=[IsProvider])
+    @action(detail=True, methods=['post'])
     def reject(self, request, pk=None):
         """Reject a booking (Provider only)"""
         booking = self.get_object()
@@ -103,9 +100,6 @@ class BookingViewSet(viewsets.ModelViewSet):
         booking.status = 'cancelled'
         booking.cancellation_reason = request.data.get('reason', 'Rejected by provider')
         booking.save()
-        
-        # Send cancellation email to user
-        send_booking_notification(booking, 'cancelled', booking.user)
         
         return Response({
             'message': 'Booking rejected',
@@ -137,19 +131,13 @@ class BookingViewSet(viewsets.ModelViewSet):
             )
             booking.save()
             
-            # Send notification to other party
-            if booking.user == request.user:
-                send_booking_notification(booking, 'cancelled', booking.provider.user)
-            else:
-                send_booking_notification(booking, 'cancelled', booking.user)
-            
             return Response({
                 'message': 'Booking cancelled successfully',
                 'booking': BookingSerializer(booking).data
             })
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
-    @action(detail=True, methods=['post'], permission_classes=[IsProvider])
+    @action(detail=True, methods=['post'])
     def complete(self, request, pk=None):
         """Mark booking as completed (Provider only)"""
         booking = self.get_object()
@@ -179,24 +167,24 @@ def booking_history(request):
     user = request.user
     
     if user.role == 'provider':
-        bookings = Booking.objects.filter(provider__user=user)
+        bookings = Booking.objects.filter(provider__user=user).select_related('user', 'provider__user', 'service')
     else:
-        bookings = Booking.objects.filter(user=user)
+        bookings = Booking.objects.filter(user=user).select_related('user', 'provider__user', 'service')
     
     upcoming = bookings.filter(
-        status='confirmed'
-    ).order_by('requested_datetime')[:10]
+        status__in=['pending', 'confirmed']
+    ).order_by('requested_date')[:10]
     
     completed = bookings.filter(
         status='completed'
-    ).order_by('-requested_datetime')[:10]
+    ).order_by('-requested_date')[:10]
     
     cancelled = bookings.filter(
         status='cancelled'
     ).order_by('-updated_at')[:10]
     
     return Response({
-        'upcoming': BookingListSerializer(upcoming, many=True).data,
-        'completed': BookingListSerializer(completed, many=True).data,
-        'cancelled': BookingListSerializer(cancelled, many=True).data
+        'upcoming': BookingSerializer(upcoming, many=True).data,
+        'completed': BookingSerializer(completed, many=True).data,
+        'cancelled': BookingSerializer(cancelled, many=True).data
     })

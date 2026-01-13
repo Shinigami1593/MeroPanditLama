@@ -39,7 +39,7 @@ class ServiceProvider(models.Model):
         User,
         on_delete=models.CASCADE,
         related_name='provider_profile',
-        limit_choices_to={'role': 'provider'}
+        limit_choices_to={'role__in': ['pandit', 'lama']}
     )
     religion_type = models.CharField(
         max_length=10,
