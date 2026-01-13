@@ -123,6 +123,7 @@ const handleSignup = async () => {
       last_name: lastName,
       password: signupForm.value.password,
       password2: signupForm.value.password2,
+      role:'user',
     })
 
     // Store token and user data

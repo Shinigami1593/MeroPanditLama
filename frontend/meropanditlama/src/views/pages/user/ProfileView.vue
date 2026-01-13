@@ -25,7 +25,7 @@
         <div class="profile-left">
           <div class="profile-image">
             <img
-              :src="userData.profile_photo || '/images/dummy.png'"
+              :src="profilePhotoUrl"
               alt="Profile Picture"
               @error="handleImageError"
             >
@@ -115,7 +115,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import Navbar from '@/components/NavbarComponent.vue'
 import Footer from '@/components/FooterComponent.vue'
@@ -140,6 +140,21 @@ const formData = ref({
 const fileInput = ref(null)
 const selectedPhoto = ref(null)
 
+// Computed property for profile photo URL
+const profilePhotoUrl = computed(() => {
+  if (!userData.value?.profile_photo) {
+    return '/images/dummy.png'
+  }
+
+  // If it's already a full URL (starts with http)
+  if (userData.value.profile_photo.startsWith('http')) {
+    return userData.value.profile_photo
+  }
+
+  // If it's a relative path, prepend the backend URL
+  return `http://localhost:8000${userData.value.profile_photo}`
+})
+
 // Check authentication and load profile
 onMounted(async () => {
   if (!isAuthenticated()) {
@@ -158,6 +173,8 @@ const loadProfile = async () => {
   try {
     const response = await authAPI.getProfile()
     userData.value = response.data
+
+    console.log('Profile Photo URL:', userData.value.profile_photo) // Debug log
 
     // Initialize form with current data
     formData.value = {
@@ -188,14 +205,15 @@ const handlePhotoChange = (event) => {
   const file = event.target.files[0]
   if (file) {
     // Validate file size (5MB max)
-    if (file.size > 10 * 1024 * 1024) {
+    if (file.size > 5 * 1024 * 1024) {
       error.value = 'Image size must be less than 5MB'
       return
     }
 
     // Validate file type
-    if (!file.type.startsWith('image/')) {
-      error.value = 'Please select an image file'
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png']
+    if (!allowedTypes.includes(file.type)) {
+      error.value = 'Only JPEG and PNG images are allowed'
       return
     }
 
@@ -216,11 +234,16 @@ const uploadPhoto = async () => {
     const formData = new FormData()
     formData.append('profile_photo', selectedPhoto.value)
 
-    // Use PATCH instead of PUT for file uploads
+    console.log('Uploading photo...') // Debug log
+
+    // Use PATCH for file uploads
     const response = await authAPI.updateProfile(formData)
 
-    // Update local data
-    userData.value = response.data.user || response.data
+    console.log('Upload response:', response.data) // Debug log
+
+    // Reload profile to get updated photo URL
+    await loadProfile()
+
     successMessage.value = 'Photo updated successfully!'
 
     // Update localStorage
@@ -228,20 +251,21 @@ const uploadPhoto = async () => {
     storedUser.profile_photo = userData.value.profile_photo
     localStorage.setItem('user', JSON.stringify(storedUser))
 
-    // Reload profile to get full URL
-    await loadProfile()
-
     setTimeout(() => {
       successMessage.value = ''
     }, 3000)
   } catch (err) {
     console.error('Error uploading photo:', err)
+    console.error('Error response:', err.response?.data) // Debug log
+
     if (err.response?.data?.profile_photo) {
       error.value = err.response.data.profile_photo[0]
     } else if (err.response?.data?.detail) {
       error.value = err.response.data.detail
+    } else if (err.response?.data?.error) {
+      error.value = err.response.data.error
     } else {
-      error.value = 'Failed to upload photo'
+      error.value = 'Failed to upload photo. Please try again.'
     }
   } finally {
     saving.value = false
@@ -304,6 +328,7 @@ const saveChanges = async () => {
 
 // Handle image load error
 const handleImageError = (event) => {
+  console.log('Image failed to load, using fallback')
   event.target.src = '/images/dummy.png'
 }
 </script>

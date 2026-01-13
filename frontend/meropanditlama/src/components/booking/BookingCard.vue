@@ -6,8 +6,9 @@
       class="booking-image"
     >
     <div class="booking-info">
-      <h3>{{ booking.service_name || 'N/A' }}</h3>
-      <p class="pandit-name">with {{ booking.provider_name }}</p>
+      <h3>{{ getServiceName() }}</h3>
+      <p class="pandit-name">with {{ booking.provider_name || 'Provider' }}</p>
+      <!-- <p class="booking-date">{{ formatDate(booking.requested_datetime) }} - {{ formatTime(booking.requested_datetime) }}</p> -->
       <p class="booking-date">{{ formatDate(booking.requested_date) }} - {{ getTimeSlotDisplay(booking.time_slot) }}</p>
     </div>
     <div class="booking-status">
@@ -23,18 +24,22 @@
       >
         Cancel Booking
       </button>
-      <a
-        v-if="booking.provider_phone"
-        :href="`tel:${booking.provider_phone}`"
-        class="action-button contact"
-      >
-        Contact Provider
-      </a>
+    </div>
+    <div v-if="showConfirmModal" class="modal-overlay" @click="showConfirmModal = false">
+      <div class="modal-content" @click.stop>
+        <h2>Cancel Booking</h2>
+        <div class="modal-buttons">
+          <button @click="confirmCancel" class="btn-yes">Yes</button>
+          <button @click="showConfirmModal = false" class="btn-no">No</button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
+import { ref } from 'vue'
+
 const props = defineProps({
   booking: {
     type: Object,
@@ -46,24 +51,31 @@ const props = defineProps({
   },
 })
 
-// eslint-disable-next-line no-unused-vars
-const emit = defineEmits(['cancel'])
 
-// Helper function to get full image URL - SAME as landing page
+const emit = defineEmits(['cancel'])
+const showConfirmModal = ref(false)
+
+// Get service name from booking object
+const getServiceName = () => {
+  // Backend returns service as an object with name property
+  if (props.booking.service && typeof props.booking.service === 'object') {
+    return props.booking.service.name || 'Service'
+  }
+  // Fallback to service_name if it exists
+  return props.booking.service_name || 'Service'
+}
+
+// Helper function to get full image URL
 const getImageUrl = (photoPath) => {
   if (!photoPath) return null
-  // If it's already a full URL, return it
   if (photoPath.startsWith('http')) return photoPath
-  // Otherwise, prepend your backend URL
   return `http://localhost:8000${photoPath}`
 }
 
 const getProviderImage = () => {
-  // Get the image URL using the same logic as landing page
-  const imageUrl = getImageUrl(props.booking.provider_photo)
 
-  // If we have an image URL, return it, otherwise return dummy
-  return imageUrl || '/images/dummy.png'
+  const imageUrl = getImageUrl(props.booking.provider_photo)
+return imageUrl || '/images/dummy.png'
 }
 
 const formatDate = (dateString) => {
@@ -88,6 +100,11 @@ const getTimeSlotDisplay = (slot) => {
     'evening': 'Evening (4pm - 8pm)'
   }
   return slots[slot] || slot
+}
+
+const confirmCancel = () => {
+  showConfirmModal.value = false
+  emit('cancel', props.booking.id)
 }
 </script>
 
@@ -135,8 +152,16 @@ const getTimeSlotDisplay = (slot) => {
 .booking-date {
   color: #999;
   font-size: 12px;
+  margin: 0 0 3px 0;
+  font-family: 'Rubik', sans-serif;
+}
+
+.booking-duration {
+  color: #A0673D;
+  font-size: 12px;
   margin: 0;
   font-family: 'Rubik', sans-serif;
+  font-weight: 500;
 }
 
 .booking-status {
@@ -171,7 +196,7 @@ const getTimeSlotDisplay = (slot) => {
 
 .status-cancelled {
   color: #DC2626;
-  background-color: #FCA5A5;
+  background-color: #fca5a598;
 }
 
 .booking-actions {
@@ -182,9 +207,9 @@ const getTimeSlotDisplay = (slot) => {
 }
 
 .action-button {
-  padding: 6px 16px;
+  padding: 8px 20px;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.3s;
@@ -205,13 +230,113 @@ const getTimeSlotDisplay = (slot) => {
   background: #E74C3C;
   color: white;
 }
-
-.action-button.contact {
-  color: white;
-  background: #A0673D;
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  font-family: 'Rubik', sans-serif;
 }
 
-.action-button.contact:hover {
-  background: #8a5733;
+.modal-content {
+  background: white;
+  padding: 40px 50px;
+  border-radius: 12px;
+  text-align: center;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  font-family: 'Rubik', sans-serif;
+  max-width: 450px;
+  width: 90%;
+  animation: slideIn 0.3s ease-out;
+}
+
+/* Added animation for modal appearance */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.modal-content h2 {
+  color: #2C2C2C;
+  font-size: 22px;
+  margin: 0 0 35px 0;
+  font-weight: 600;
+}
+
+.modal-buttons {
+  display: flex;
+  gap: 15px;
+  justify-content: center;
+}
+
+.btn-yes {
+  padding: 12px 35px;
+  background-color: #A0673D;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.3s;
+  font-family: 'Rubik', sans-serif;
+}
+
+.btn-yes:hover {
+  background-color: #8B5530;
+}
+
+.btn-no {
+  padding: 12px 35px;
+  background-color: #E8E8E8;
+  color: #333;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.3s;
+  font-family: 'Rubik', sans-serif;
+}
+
+.btn-no:hover {
+  background-color: #D8D8D8;
+}
+
+@media (max-width: 768px) {
+  .booking-card {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .booking-image {
+    width: 60px;
+    height: 60px;
+  }
+
+  .booking-status {
+    width: 100%;
+  }
+
+  .booking-actions {
+    width: 100%;
+    align-items: stretch;
+  }
+
+  .action-button {
+    width: 100%;
+  }
 }
 </style>

@@ -3,6 +3,18 @@
     <Navbar />
 
     <main class="main-content">
+      <!-- Success Message -->
+      <div v-if="showSuccessMessage" class="success-overlay" @click="closeSuccessMessage">
+        <div class="success-modal" @click.stop>
+          <div class="success-icon">✓</div>
+          <h3 class="success-title">Booking Successful!</h3>
+          <p class="success-text">Your booking request has been sent successfully. The provider will review and confirm your booking soon.</p>
+          <button @click="closeSuccessMessage" class="success-button">
+            Continue
+          </button>
+        </div>
+      </div>
+
       <div v-if="loading" class="loading-container">
         <p>Loading provider details...</p>
       </div>
@@ -124,8 +136,8 @@
                 ></textarea>
               </div>
 
-              <button type="submit" class="submit-button" :disabled="!isFormValid">
-                Send Booking Request
+              <button type="submit" class="submit-button" :disabled="!isFormValid || isSubmitting">
+                {{ isSubmitting ? 'Sending...' : 'Send Booking Request' }}
               </button>
             </form>
           </div>
@@ -152,7 +164,8 @@ const providerId = ref(route.params.id);
 const loading = ref(true);
 const error = ref('');
 const provider = ref(null);
-
+const showSuccessMessage = ref(false);
+const isSubmitting = ref(false);
 // Calendar state
 const currentDate = ref(new Date());
 const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -269,6 +282,7 @@ const calendarDates = computed(() => {
   return dates;
 });
 
+
 // Calendar methods
 const formatDate = (date) => {
   const year = date.getFullYear();
@@ -309,8 +323,8 @@ const nextMonth = () => {
 // Form validation
 const isFormValid = computed(() => {
   return bookingForm.value.service &&
-         bookingForm.value.date &&
-         bookingForm.value.timeSlot;
+  bookingForm.value.date &&
+  bookingForm.value.timeSlot;
 });
 
 // Helper function
@@ -325,11 +339,13 @@ const getImageUrl = (photoPath) => {
 const submitBooking = async () => {
   if (!isFormValid.value) return;
 
+  isSubmitting.value = true;
+
   try {
     const bookingData = {
       provider: providerId.value,
       service: bookingForm.value.service,
-      requested_date: bookingForm.value.date,  // Changed from 'date'
+      requested_date: bookingForm.value.date,
       time_slot: bookingForm.value.timeSlot,
       notes: bookingForm.value.note
     };
@@ -339,13 +355,38 @@ const submitBooking = async () => {
     const response = await bookingsAPI.createBooking(bookingData);
     console.log('Booking response:', response);
 
-    alert('Booking request sent successfully!');
-    router.push({ name: 'home' });
+    // Show success message
+    showSuccessMessage.value = true;
+
   } catch (err) {
     console.error('Full error:', err);
     console.error('Error response:', err.response?.data);
-    alert(`Failed to send booking request: ${err.response?.data?.detail || err.message}`);
+
+    // Show error message
+    let errorMessage = 'Failed to send booking request. ';
+    if (err.response?.data) {
+      if (typeof err.response.data === 'string') {
+        errorMessage += err.response.data;
+      } else if (err.response.data.detail) {
+        errorMessage += err.response.data.detail;
+      } else if (err.response.data.error) {
+        errorMessage += err.response.data.error;
+      } else {
+        errorMessage += 'Please try again.';
+      }
+    } else {
+      errorMessage += err.message;
+    }
+
+    alert(errorMessage);
+  } finally {
+    isSubmitting.value = false;
   }
+};
+
+const closeSuccessMessage = () => {
+  showSuccessMessage.value = false;
+  router.push('/');
 };
 </script>
 
@@ -734,5 +775,106 @@ const submitBooking = async () => {
     align-items: center;
     text-align: center;
   }
+}
+.success-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.success-modal {
+  background: white;
+  border-radius: 16px;
+  padding: 40px;
+  max-width: 450px;
+  width: 90%;
+  text-align: center;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.success-icon {
+  width: 80px;
+  height: 80px;
+  background: #47C920;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 48px;
+  color: white;
+  margin: 0 auto 24px;
+  animation: scaleIn 0.5s ease;
+}
+
+@keyframes scaleIn {
+  from {
+    transform: scale(0);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+
+.success-title {
+  font-size: 24px;
+  font-weight: 600;
+  color: #AE664A;
+  margin-bottom: 16px;
+  font-family: 'Rubik', sans-serif;
+}
+
+.success-text {
+  font-size: 15px;
+  color: #666;
+  line-height: 1.6;
+  margin-bottom: 32px;
+  font-family: 'Rubik', sans-serif;
+}
+
+.success-button {
+  width: 100%;
+  padding: 14px;
+  background: #AE664A;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 500;
+  font-size: 15px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  font-family: 'Rubik', sans-serif;
+}
+
+.success-button:hover {
+  background: #9A5838;
 }
 </style>
