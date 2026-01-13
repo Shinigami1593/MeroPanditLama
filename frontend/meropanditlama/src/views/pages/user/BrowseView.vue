@@ -27,24 +27,40 @@
 
           <select v-model="selectedService" class="service-dropdown">
             <option value="all">All</option>
-            <option value="pandit">Pandit</option>
-            <option value="lama">Lama</option>
+            <option value="hindu">Pandit</option>
+            <option value="buddhist">Lama</option>
           </select>
         </div>
       </section>
 
+      <!-- Loading State -->
+      <div v-if="loading" class="loading-container">
+        <p>Loading providers...</p>
+      </div>
+
+      <!-- Error State -->
+      <div v-if="error" class="error-message">
+        {{ error }}
+      </div>
+
       <!-- Pandit Cards Grid -->
-      <section class="cards-section">
+      <section class="cards-section" v-if="!loading">
         <div class="cards-grid">
-          <div v-for="pandit in pandits" :key="pandit.id" class="pandit-card">
+          <div v-for="provider in filteredProviders" :key="provider.id" class="pandit-card">
             <div class="card-image">
-              <div class="image-placeholder"></div>
+              <img
+                v-if="provider.profilePhoto"
+                :src="getImageUrl(provider.profilePhoto)"
+                :alt="provider.name"
+                class="profile-photo"
+              />
+              <div v-else class="image-placeholder"></div>
             </div>
             <div class="card-content">
-              <span class="card-tag">{{ pandit.type }}</span>
-              <h3 class="card-name">{{ pandit.name }}</h3>
-              <p class="card-price">{{ pandit.price }}</p>
-              <button class="details-button" @click="viewDetails(pandit.id)">View Details</button>
+              <span class="card-tag">{{ provider.type }}</span>
+              <h3 class="card-name">{{ provider.name }}</h3>
+              <p class="card-price">{{ provider.price }}</p>
+              <button class="details-button" @click="viewDetails(provider.id)">View Details</button>
             </div>
           </div>
         </div>
@@ -57,27 +73,84 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import Navbar from '../../../components/NavbarComponent.vue'
 import Footer from '../../../components/FooterComponent.vue'
+import { providersAPI } from '@/axios'
 
 const router = useRouter()
 
 // Search and filter state
 const searchQuery = ref('')
 const selectedService = ref('all')
+const loading = ref(true)
+const error = ref('')
+const providers = ref([])
 
-const pandits = ref([
-  { id: 1, type: 'Pandit', name: 'Pandit John Doe', price: 'Starts at NPR 5,300' },
-  { id: 2, type: 'Pandit', name: 'Pandit John Doe', price: 'Starts at NPR 5,300' },
-  { id: 3, type: 'Pandit', name: 'Pandit John Doe', price: 'Starts at NPR 5,300' },
-  { id: 4, type: 'Pandit', name: 'Pandit John Doe', price: 'Starts at NPR 5,300' },
-  { id: 5, type: 'Lama', name: 'Lama John Doe', price: 'Starts at NPR 5,300' },
-  { id: 6, type: 'Lama', name: 'Lama John Doe', price: 'Starts at NPR 5,300' },
-  { id: 7, type: 'Lama', name: 'Lama John Doe', price: 'Starts at NPR 5,300' },
-  { id: 8, type: 'Lama', name: 'Lama John Doe', price: 'Starts at NPR 5,300' },
-])
+// Load providers on mount
+onMounted(async () => {
+  await loadProviders()
+})
+
+// Load providers from backend
+const loadProviders = async () => {
+  loading.value = true
+  error.value = ''
+
+  try {
+    const response = await providersAPI.getProviders({
+      verified: true
+    })
+
+    const apiProviders = response.data.results || response.data
+
+    // Map API data to component format
+    providers.value = apiProviders.map(p => ({
+      id: p.id,
+      religionType: p.religion_type,
+      type: p.religion_type === 'hindu' ? 'Pandit' : 'Lama',
+      name: `${p.religion_type === 'hindu' ? 'Pandit' : 'Lama'} ${p.user.first_name} ${p.user.last_name}`,
+      price: `Starts at NPR ${parseFloat(p.price_per_service).toLocaleString('en-NP')}`,
+      profilePhoto: p.user.profile_photo
+    }))
+
+  } catch (err) {
+    console.error('Error loading providers:', err)
+    error.value = 'Failed to load providers. Please try again.'
+  } finally {
+    loading.value = false
+  }
+}
+
+// Filter providers based on search and service type
+const filteredProviders = computed(() => {
+  let filtered = providers.value
+
+  // Filter by service type
+  if (selectedService.value !== 'all') {
+    filtered = filtered.filter(p => p.religionType === selectedService.value)
+  }
+
+  // Filter by search query
+  if (searchQuery.value.trim()) {
+    const query = searchQuery.value.toLowerCase()
+    filtered = filtered.filter(p =>
+      p.name.toLowerCase().includes(query)
+    )
+  }
+
+  return filtered
+})
+
+// Helper function to get full image URL
+const getImageUrl = (photoPath) => {
+  if (!photoPath) return null
+  // If it's already a full URL, return it
+  if (photoPath.startsWith('http')) return photoPath
+  // Otherwise, prepend your backend URL
+  return `http://localhost:8000${photoPath}`
+}
 
 const viewDetails = (id) => {
   router.push(`/browse/${id}`)
@@ -187,6 +260,25 @@ const viewDetails = (id) => {
   min-width: 150px;
 }
 
+/* Loading & Error States */
+.loading-container {
+  text-align: center;
+  padding: 60px 20px;
+  font-size: 18px;
+  color: #666;
+}
+
+.error-message {
+  max-width: 600px;
+  margin: 20px auto;
+  padding: 16px 24px;
+  background: #fee;
+  color: #c33;
+  border-radius: 8px;
+  text-align: center;
+  font-size: 14px;
+}
+
 /* Cards Section */
 .cards-section {
   padding: 60px 40px;
@@ -221,6 +313,13 @@ const viewDetails = (id) => {
   width: 100%;
   height: 180px;
   background: #e5e7eb;
+}
+
+.profile-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
 }
 
 .image-placeholder {

@@ -1,30 +1,41 @@
 <template>
   <div class="booking-card">
-    <img :src="booking.image && !booking.image.includes('placeholder') ? booking.image:'/images/dummy.png'" :alt="booking.panditName" class="booking-image">
-
+    <img
+      :src="getProviderImage()"
+      :alt="booking.provider_name"
+      class="booking-image"
+    >
     <div class="booking-info">
-      <h3>{{ booking.serviceName }}</h3>
-      <p class="pandit-name">with {{ booking.panditName }}</p>
-      <p class="booking-date">{{ booking.date }}</p>
+      <h3>{{ booking.service_name || 'N/A' }}</h3>
+      <p class="pandit-name">with {{ booking.provider_name }}</p>
+      <p class="booking-date">{{ formatDate(booking.requested_date) }} - {{ getTimeSlotDisplay(booking.time_slot) }}</p>
     </div>
-
     <div class="booking-status">
-      <!-- Updated status badge with dynamic color classes -->
       <span :class="['status-badge', `status-${booking.status.toLowerCase()}`]">
-        {{ booking.status }}
+        {{ booking.status.charAt(0).toUpperCase() + booking.status.slice(1) }}
       </span>
     </div>
-
-    <div class="booking-price">
-      <span class="price">{{ booking.price }}</span>
-      <!-- <a v-if="status === 'Upcoming'" href="#" class="action-link">Cancel booking</a> -->
-      <!-- <a v-if="status === 'Completed'" href="#" class="action-link">Book Again</a> -->
+    <div class="booking-actions">
+      <button
+        v-if="status === 'Upcoming' && booking.can_cancel"
+        @click="$emit('cancel', booking.id)"
+        class="action-button cancel"
+      >
+        Cancel Booking
+      </button>
+      <a
+        v-if="booking.provider_phone"
+        :href="`tel:${booking.provider_phone}`"
+        class="action-button contact"
+      >
+        Contact Provider
+      </a>
     </div>
   </div>
 </template>
 
 <script setup>
-defineProps({
+const props = defineProps({
   booking: {
     type: Object,
     required: true,
@@ -34,10 +45,53 @@ defineProps({
     required: true,
   },
 })
+
+// eslint-disable-next-line no-unused-vars
+const emit = defineEmits(['cancel'])
+
+// Helper function to get full image URL - SAME as landing page
+const getImageUrl = (photoPath) => {
+  if (!photoPath) return null
+  // If it's already a full URL, return it
+  if (photoPath.startsWith('http')) return photoPath
+  // Otherwise, prepend your backend URL
+  return `http://localhost:8000${photoPath}`
+}
+
+const getProviderImage = () => {
+  // Get the image URL using the same logic as landing page
+  const imageUrl = getImageUrl(props.booking.provider_photo)
+
+  // If we have an image URL, return it, otherwise return dummy
+  return imageUrl || '/images/dummy.png'
+}
+
+const formatDate = (dateString) => {
+  if (!dateString) return 'N/A'
+  const date = new Date(dateString)
+  const day = date.getDate()
+  const suffix = ['th', 'st', 'nd', 'rd']
+  const v = day % 100
+  const ordinal = day + (suffix[(v - 20) % 10] || suffix[v] || suffix[0])
+
+  return date.toLocaleDateString('en-US', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  }).replace(/\d+/, ordinal)
+}
+
+const getTimeSlotDisplay = (slot) => {
+  const slots = {
+    'morning': 'Morning (8am - 12pm)',
+    'afternoon': 'Afternoon (12pm - 4pm)',
+    'evening': 'Evening (4pm - 8pm)'
+  }
+  return slots[slot] || slot
+}
 </script>
 
 <style scoped>
-/* Added Rubik font import and global font styling */
 @import url('https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap');
 
 .booking-card {
@@ -100,7 +154,6 @@ defineProps({
   font-family: 'Rubik', sans-serif;
 }
 
-/* Added specific status badge colors as per design requirements */
 .status-confirmed {
   color: #2F711B;
   background-color: #47C92027;
@@ -121,31 +174,44 @@ defineProps({
   background-color: #FCA5A5;
 }
 
-.booking-price {
+.booking-actions {
   display: flex;
   flex-direction: column;
   gap: 8px;
   align-items: flex-end;
 }
 
-.price {
-  color: #A0673D;
-  font-weight: 600;
-  font-size: 14px;
-  font-family: 'Rubik', sans-serif;
-}
-
-.action-link {
-  color: #E74C3C;
-  text-decoration: none;
+.action-button {
+  padding: 6px 16px;
+  border-radius: 6px;
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
-  transition: color 0.3s;
+  transition: all 0.3s;
   font-family: 'Rubik', sans-serif;
+  border: none;
+  text-decoration: none;
+  text-align: center;
+  min-width: 120px;
 }
 
-.action-link:hover {
-  color: #C0392B;
+.action-button.cancel {
+  color: #E74C3C;
+  background: white;
+  border: 1px solid #E74C3C;
+}
+
+.action-button.cancel:hover {
+  background: #E74C3C;
+  color: white;
+}
+
+.action-button.contact {
+  color: white;
+  background: #A0673D;
+}
+
+.action-button.contact:hover {
+  background: #8a5733;
 }
 </style>

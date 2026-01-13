@@ -1,7 +1,11 @@
 <template>
   <div class="bookings-list">
+    <div v-if="bookings.length === 0" class="no-bookings">
+      <p>No cancelled bookings</p>
+    </div>
     <BookingCard
-      v-for="booking in cancelledBookings"
+      v-else
+      v-for="booking in bookings"
       :key="booking.id"
       :booking="booking"
       status="Cancelled"
@@ -10,21 +14,16 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+// import { defineProps } from 'vue'
 import BookingCard from './BookingCard.vue'
 
-const cancelledBookings = ref([
-  {
-    id: 5,
-    serviceName: 'Upanayana',
-    panditName: 'Pandit Dev Singh',
-    date: '5th October 2025',
-    price: 'NPR 6,000',
-    status: 'Cancelled',
-    statusColor: '#F44336',
-    image: '/placeholder.svg?height=80&width=80',
-  },
-])
+// eslint-disable-next-line no-unused-vars
+const props = defineProps({
+  bookings: {
+    type: Array,
+    required: true
+  }
+})
 </script>
 
 <style scoped>
@@ -32,5 +31,12 @@ const cancelledBookings = ref([
   display: flex;
   flex-direction: column;
   gap: 15px;
+}
+
+.no-bookings {
+  text-align: center;
+  padding: 60px 20px;
+  color: #666;
+  font-size: 16px;
 }
 </style>

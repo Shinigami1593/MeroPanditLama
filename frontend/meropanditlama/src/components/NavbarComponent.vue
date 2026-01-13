@@ -1,6 +1,6 @@
 <!-- eslint-disable no-unused-vars -->
 <template>
-  <nav class="navbar">
+<nav class="navbar">
     <div class="nav-container">
       <!-- Logo -->
       <router-link to="/" class="logo">MeroPanditLama</router-link>
@@ -15,7 +15,11 @@
         >
           Home
         </router-link>
-        <router-link to="/browse" class="nav-link" :class="{ active: currentRoute === 'browse' }">
+        <router-link
+          to="/browse"
+          class="nav-link"
+          :class="{ active: currentRoute === 'browse' }"
+        >
           Browse
         </router-link>
         <router-link
@@ -38,11 +42,23 @@
 
       <!-- Right Side Actions -->
       <div class="nav-actions">
+        <!-- User Info (when authenticated) -->
+        <!-- <div v-if="isAuthenticated && user" class="user-info">
+          <span class="user-name">{{ user.first_name }}</span>
+        </div> -->
+
         <!-- Login Button (when not authenticated) -->
-        <router-link v-if="!isAuthenticated" to="/login" class="login-button"> Login </router-link>
+        <router-link v-if="!isAuthenticated" to="/login" class="login-button">
+          Login
+        </router-link>
 
         <!-- Logout Icon (when authenticated) -->
-        <button v-if="isAuthenticated" @click="handleLogout" class="logout-button" title="Logout">
+        <button
+          v-if="isAuthenticated"
+          @click="handleLogout"
+          class="logout-button"
+          title="Logout"
+        >
           <i class="bi bi-box-arrow-right"></i>
         </button>
       </div>
@@ -52,25 +68,42 @@
 
 <script setup>
 // eslint-disable-next-line no-unused-vars
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { isAuthenticated as checkAuth, getUserData, logout } from '@/axios'
 
-// eslint-disable-next-line no-unused-vars
 const router = useRouter()
 const route = useRoute()
 
-// eslint-disable-next-line no-unused-vars
-const props = defineProps({
-  isAuthenticated: {
-    type: Boolean,
-    default: false,
-  },
+// Reactive state
+const isAuthenticated = ref(false)
+const user = ref(null)
+
+// Check authentication on mount
+onMounted(() => {
+  updateAuthState()
+})
+
+// Watch for route changes to update auth state
+const updateAuthState = () => {
+  isAuthenticated.value = checkAuth()
+  user.value = getUserData()
+}
+
+// Update auth state when route changes
+router.afterEach(() => {
+  updateAuthState()
 })
 
 const currentRoute = computed(() => route.name)
 
 const handleLogout = () => {
-  console.log('Logging out...')
+  if (confirm(' Are you sure you want to logout?')){
+    logout()
+    isAuthenticated.value = false
+    user.value = null
+    router.push('/')
+  }
 }
 </script>
 

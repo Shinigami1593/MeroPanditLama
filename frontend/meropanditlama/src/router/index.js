@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
 const routes = [
+  //USER ROUTES
   {
     path: '/',
     name: 'home',
@@ -36,6 +37,34 @@ const routes = [
     name: 'pandit-detail',
     component: () => import('../views/pages/user/DetailsView.vue'),
     meta: { requiresAuth: true },
+  },
+
+  //PROVIDERS ROUTES
+
+  {
+    path: '/provider/home',
+    name: 'provider-home',
+    component: () => import('../views/pages/providers/ProviderHomeView.vue'),
+  },
+  {
+    path: '/provider/availability',
+    name: 'provider-availability',
+    component: () => import('../views/pages/providers/ProviderAvailabilityView.vue'),
+  },
+  {
+    path: '/provider/requests',
+    name: 'provider-requests',
+    component: () => import('../views/pages/providers/ProviderRequestsView.vue'),
+  },
+  {
+    path: '/provider/history',
+    name: 'provider-history',
+    component: () => import('../views/pages/providers/ProviderHistoryView.vue'),
+  },
+  {
+    path: '/provider/profile',
+    name: 'provider-profile',
+    component: () => import('../views/pages/providers/ProviderProfileView.vue'),
   },
 ]
 

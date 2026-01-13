@@ -1,9 +1,8 @@
 <template>
   <div class="app-wrapper">
     <Navbar :isAuthenticated="true" />
-
     <div class="my-bookings-container">
-      <h1>My Booking</h1>
+      <h1>My Bookings</h1>
 
       <div class="tabs">
         <button
@@ -29,36 +28,92 @@
         </button>
       </div>
 
-      <div class="bookings-content">
-        <UpcomingBookings v-if="activeTab === 'upcoming'" />
-        <CompletedBookings v-if="activeTab === 'completed'" />
-        <CancelledBookings v-if="activeTab === 'cancelled'" />
+      <!-- Loading State -->
+      <div v-if="loading" class="loading-container">
+        <p>Loading bookings...</p>
+      </div>
+
+      <!-- Error State -->
+      <div v-else-if="error" class="error-message">
+        {{ error }}
+      </div>
+
+      <!-- Bookings Content -->
+      <div v-else class="bookings-content">
+        <UpcomingBookings
+          v-if="activeTab === 'upcoming'"
+          :bookings="upcomingBookings"
+          @refresh="loadBookings"
+        />
+        <CompletedBookings
+          v-if="activeTab === 'completed'"
+          :bookings="completedBookings"
+        />
+        <CancelledBookings
+          v-if="activeTab === 'cancelled'"
+          :bookings="cancelledBookings"
+        />
       </div>
     </div>
-
     <Footer />
   </div>
 </template>
 
 <script setup>
-
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import Navbar from '@/components/NavbarComponent.vue'
 import Footer from '@/components/FooterComponent.vue'
 import UpcomingBookings from '../../../components/booking/UpcomingBooking.vue'
 import CompletedBookings from '../../../components/booking/CompletedBooking.vue'
 import CancelledBookings from '../../../components/booking/CancelledBooking.vue'
+import { bookingsAPI } from '@/axios'
 
 const activeTab = ref('upcoming')
-const isAuthenticated = ref(false)
+const loading = ref(true)
+const error = ref('')
+const bookings = ref([])
 
-onMounted(() => {
-  isAuthenticated.value = localStorage.getItem('isAuthenticated') === 'true'
+// Computed properties for filtered bookings
+const upcomingBookings = computed(() => {
+  return bookings.value.filter(b =>
+    b.status === 'pending' || b.status === 'confirmed'
+  )
 })
+
+const completedBookings = computed(() => {
+  return bookings.value.filter(b => b.status === 'completed')
+})
+
+const cancelledBookings = computed(() => {
+  return bookings.value.filter(b => b.status === 'cancelled')
+})
+
+// Load bookings on mount
+onMounted(() => {
+  loadBookings()
+})
+
+// Load bookings from backend
+const loadBookings = async () => {
+  loading.value = true
+  error.value = ''
+
+  try {
+    const response = await bookingsAPI.getBookings()
+    console.log('Bookings response:', response.data) // Debug log
+    bookings.value = response.data.results || response.data || []
+    console.log('Loaded bookings:', bookings.value) // Debug log
+  } catch (err) {
+    console.error('Error loading bookings:', err)
+    error.value = 'Failed to load bookings. Please try again.'
+  } finally {
+    loading.value = false
+  }
+}
 </script>
 
 <style scoped>
-  @import url('https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap');
 
 .app-wrapper {
   display: flex;
@@ -110,6 +165,24 @@ h1 {
 
 .tab-button:hover {
   color: #A0673D;
+}
+
+.loading-container {
+  text-align: center;
+  padding: 60px 20px;
+  font-size: 16px;
+  color: #666;
+}
+
+.error-message {
+  max-width: 600px;
+  margin: 20px auto;
+  padding: 16px 24px;
+  background: #fee;
+  color: #c33;
+  border-radius: 8px;
+  text-align: center;
+  font-size: 14px;
 }
 
 .bookings-content {

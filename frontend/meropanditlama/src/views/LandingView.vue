@@ -1,15 +1,25 @@
 <template>
   <div class="browse-page">
-    <Navbar :isAuthenticated="true" />
+    <Navbar />
 
     <main class="main-content">
-      <!-- Welcome Section -->
-      <section class="welcome-section">
-        <h1 class="welcome-title">Welcome, John Doe</h1>
+      <!-- Welcome Section - Only show if authenticated -->
+      <section class="welcome-section" v-if="isAuth">
+        <h1 class="welcome-title">Welcome, {{ userName }}</h1>
       </section>
 
+      <!-- Loading State -->
+      <div v-if="loading" class="loading-container">
+        <p>Loading providers...</p>
+      </div>
+
+      <!-- Error State -->
+      <div v-if="error" class="error-message">
+        {{ error }}
+      </div>
+
       <!-- Booking Options -->
-      <section class="booking-options">
+      <section class="booking-options" v-if="!loading">
         <div class="booking-card" @click="navigateToBooking('browse')">
           <div class="card-icon">
             <!-- <svg width="60" height="60" viewBox="0 0 60 60" fill="none">
@@ -41,22 +51,29 @@
       </section>
 
       <!-- View All Link -->
-      <div class="view-all-container">
+      <div class="view-all-container" v-if="!loading && providers.length > 0">
         <a href="#" class="view-all-link" @click="navigateToBooking('browse')">View All</a>
       </div>
 
       <!-- Pandit Profiles Horizontal Scroll -->
-      <section class="profiles-section">
+      <section class="profiles-section" v-if="!loading && providers.length > 0">
         <div class="profiles-scroll">
-          <div v-for="pandit in pandits" :key="pandit.id" class="profile-card">
+          <div v-for="provider in providers" :key="provider.id" class="profile-card">
             <div class="profile-image">
-              <div class="image-placeholder"></div>
+              <div class="image-placeholder">
+                <img
+                    v-if="provider.profilePhoto"
+                    :src="getImageUrl(provider.profilePhoto)"
+                    :alt="provider.name"
+                    class="profile-photo"
+                  />
+              </div>
             </div>
             <div class="profile-content">
-              <span class="profile-tag">{{ pandit.type }}</span>
-              <h3 class="profile-name">{{ pandit.name }}</h3>
-              <p class="profile-price">Starts at {{ pandit.price }}</p>
-              <button class="view-details-button" @click="viewDetails(pandit.id)">
+              <span class="profile-tag">{{ provider.type }}</span>
+              <h3 class="profile-name">{{ provider.name }}</h3>
+              <p class="profile-price">Starts at {{ provider.price }}</p>
+              <button class="view-details-button" @click="viewDetails(provider.id)">
                 View Details
               </button>
             </div>
@@ -71,27 +88,85 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import Navbar from '../components/NavbarComponent.vue'
 import Footer from '../components/FooterComponent.vue'
+import { providersAPI, isAuthenticated, getUserData } from '@/axios'
 
 const router = useRouter()
 
-// Sample data
-const pandits = ref([
-  { id: 1, type: 'Pandit', name: 'Pandit John Doe', price: 'NPR 5,300' },
-  { id: 2, type: 'Pandit', name: 'Pandit John Doe', price: 'NPR 5,300' },
-  { id: 3, type: 'Pandit', name: 'Pandit John Doe', price: 'NPR 5,300' },
-  { id: 4, type: 'Pandit', name: 'Pandit John Doe', price: 'NPR 5,300' },
-])
+// State
+const loading = ref(true)
+const error = ref('')
+const providers = ref([])
+
+// Check if user is authenticated
+const isAuth = computed(() => isAuthenticated())
+
+// Get user name
+const userName = computed(() => {
+  const user = getUserData()
+  return user ? `${user.first_name}` : 'Guest'
+})
+
+// Load providers on mount
+onMounted(async () => {
+  await loadProviders()
+})
+
+// Load providers from backend
+const loadProviders = async () => {
+  loading.value = true
+  error.value = ''
+
+  try {
+    const response = await providersAPI.getProviders({
+      verified: true
+    })
+
+    const apiProviders = response.data.results || response.data
+
+    // Map API data to match your existing format
+    providers.value = apiProviders.map(p => ({
+      id: p.id,
+      type: p.religion_type === 'hindu' ? 'Pandit' : 'Lama',
+      name: `${p.religion_type === 'hindu' ? 'Pandit' : 'Lama'} ${p.user.first_name} ${p.user.last_name}`,
+      price: `NPR ${parseFloat(p.price_per_service).toLocaleString('en-NP')}`,
+      profilePhoto: p.user.profile_photo // Add this line
+    }))
+
+  } catch (err) {
+    console.error('Error loading providers:', err)
+    error.value = 'Failed to load providers. Please try again.'
+
+    // Fallback to sample data if API fails
+    providers.value = [
+      { id: 1, type: 'Pandit', name: 'Pandit John Doe', price: 'NPR 5,300', profilePhoto: null },
+      { id: 2, type: 'Pandit', name: 'Pandit John Doe', price: 'NPR 5,300', profilePhoto: null },
+      { id: 3, type: 'Pandit', name: 'Pandit John Doe', price: 'NPR 5,300', profilePhoto: null },
+      { id: 4, type: 'Pandit', name: 'Pandit John Doe', price: 'NPR 5,300', profilePhoto: null },
+    ]
+  } finally {
+    loading.value = false
+  }
+}
+
+// Helper function to get full image URL
+const getImageUrl = (photoPath) => {
+  if (!photoPath) return null
+  // If it's already a full URL, return it
+  if (photoPath.startsWith('http')) return photoPath
+  // Otherwise, prepend your backend URL
+  return `http://localhost:8000${photoPath}`
+}
 
 const navigateToBooking = (type) => {
   router.push(`/${type}`)
 }
 
 const viewDetails = (id) => {
-  router.push(`/pandit/${id}`)
+  router.push(`/browse/${id}`)
 }
 </script>
 
@@ -117,6 +192,12 @@ const viewDetails = (id) => {
   flex: 1;
   width: 100%;
 }
+.profile-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
 
 /* Welcome Section */
 .welcome-section {
@@ -129,6 +210,26 @@ const viewDetails = (id) => {
   font-size: 32px;
   font-weight: 600;
   color: #ae664a;
+}
+
+/* Loading State */
+.loading-container {
+  text-align: center;
+  padding: 60px 20px;
+  font-size: 18px;
+  color: #666;
+}
+
+/* Error State */
+.error-message {
+  max-width: 600px;
+  margin: 20px auto;
+  padding: 16px 24px;
+  background: #fee;
+  color: #c33;
+  border-radius: 8px;
+  text-align: center;
+  font-size: 14px;
 }
 
 /* Booking Options */

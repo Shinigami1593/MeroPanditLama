@@ -1,37 +1,53 @@
 <template>
   <div class="detail-page">
-    <Navbar :is-authenticated="true"/>
+    <Navbar />
 
     <main class="main-content">
-      <div class="content-container">
+      <div v-if="loading" class="loading-container">
+        <p>Loading provider details...</p>
+      </div>
+
+      <div v-else-if="error" class="error-message">
+        {{ error }}
+      </div>
+
+      <div v-else class="content-container">
         <!-- Left Section: Profile Info -->
         <section class="profile-section">
           <div class="profile-header">
             <div class="profile-image">
-              <div class="image-placeholder"></div>
+              <img
+                v-if="provider.profilePhoto"
+                :src="getImageUrl(provider.profilePhoto)"
+                :alt="provider.name"
+                class="profile-photo"
+              />
+              <div v-else class="image-placeholder"></div>
             </div>
             <div class="profile-info">
-              <h1 class="profile-name">Pandit John Doe</h1>
-              <p class="profile-location">Lorem ipsum dolor sit amet consectetur</p>
-              <p class="profile-address">Kathmandu, Nepal</p>
+              <h1 class="profile-name">{{ provider.name }}</h1>
+              <p class="profile-location">{{ provider.shortDescription }}</p>
+              <p class="profile-address">{{ provider.location }}</p>
+              <div class="profile-meta">
+                <span v-if="provider.rating" class="meta-item">⭐ {{ provider.rating }}</span>
+                <span class="meta-item">{{ provider.experience }} years experience</span>
+              </div>
             </div>
           </div>
 
           <div class="about-section">
-            <h2 class="section-title">About Pandit John Doe</h2>
+            <h2 class="section-title">About {{ provider.name }}</h2>
             <p class="about-text">
-              Lorem ipsum dolor sit amet consectetur adipiscing elit. Dui eveinet esse enim
-              libero accusamus quia laudantium reiciendis fuga tempora repellendus adipisci
-              iste, labore seperuntur ut, cupiditate mollitia commodi elenus.
+              {{ provider.description }}
             </p>
           </div>
 
           <div class="services-section">
             <h2 class="section-title">Services Offered</h2>
             <div class="service-tags">
-              <span class="service-tag">Puja</span>
-              <span class="service-tag">Wedding Ceremony</span>
-              <span class="service-tag">Griha Pravesh</span>
+              <span v-for="service in provider.services" :key="service.id" class="service-tag">
+                {{ service.name }}
+              </span>
             </div>
           </div>
         </section>
@@ -40,27 +56,62 @@
         <section class="booking-section">
           <div class="booking-card">
             <h2 class="booking-title">Book This Service</h2>
-            <p class="booking-price">Starts at NPR 5,100</p>
+            <p class="booking-price">Starts at NPR {{ provider.priceFormatted }}</p>
 
             <form @submit.prevent="submitBooking" class="booking-form">
               <div class="form-group">
                 <label class="form-label">Select Service</label>
                 <select v-model="bookingForm.service" class="form-select" required>
                   <option value="">Select a service</option>
-                  <option value="puja">Puja</option>
-                  <option value="wedding">Wedding Ceremony</option>
-                  <option value="griha-pravesh">Griha Pravesh</option>
+                  <option v-for="service in provider.services" :key="service.id" :value="service.id">
+                    {{ service.name }}
+                  </option>
                 </select>
               </div>
 
+              <!-- Calendar -->
               <div class="form-group">
-                <label class="form-label">Preferred Date</label>
-                <input
-                  type="date"
-                  v-model="bookingForm.date"
-                  class="form-input"
-                  required
-                />
+                <label class="form-label">Select Date</label>
+                <div class="calendar-container">
+                  <div class="calendar-header">
+                    <button type="button" @click="previousMonth" class="calendar-nav">‹</button>
+                    <span class="calendar-month">{{ currentMonthYear }}</span>
+                    <button type="button" @click="nextMonth" class="calendar-nav">›</button>
+                  </div>
+                  <div class="calendar-grid">
+                    <div v-for="day in weekDays" :key="day" class="calendar-day-label">{{ day }}</div>
+                    <div
+                      v-for="date in calendarDates"
+                      :key="date.dateString"
+                      :class="[
+                        'calendar-date',
+                        { 'other-month': date.isOtherMonth },
+                        { 'selected': isDateSelected(date.dateString) },
+                        { 'disabled': date.isPast }
+                      ]"
+                      @click="!date.isPast && selectDate(date.dateString)"
+                    >
+                      {{ date.day }}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Time Slots -->
+              <div class="form-group" v-if="bookingForm.date">
+                <label class="form-label">Select Time Slot</label>
+                <div class="time-slots">
+                  <button
+                    type="button"
+                    v-for="slot in timeSlots"
+                    :key="slot.value"
+                    :class="['time-slot', { 'selected': bookingForm.timeSlot === slot.value }]"
+                    @click="selectTimeSlot(slot.value)"
+                  >
+                    <span class="slot-label">{{ slot.label }}</span>
+                    <span class="slot-time">{{ slot.time }}</span>
+                  </button>
+                </div>
               </div>
 
               <div class="form-group">
@@ -73,7 +124,7 @@
                 ></textarea>
               </div>
 
-              <button type="submit" class="submit-button">
+              <button type="submit" class="submit-button" :disabled="!isFormValid">
                 Send Booking Request
               </button>
             </form>
@@ -88,29 +139,213 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import Navbar from '../../../components/NavbarComponent.vue';
 import Footer from '../../../components/FooterComponent.vue';
+import { providersAPI, bookingsAPI } from '@/axios';
 
 const route = useRoute();
 const router = useRouter();
 
-const panditId = ref(route.params.id);
+const providerId = ref(route.params.id);
+const loading = ref(true);
+const error = ref('');
+const provider = ref(null);
+
+// Calendar state
+const currentDate = ref(new Date());
+const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+// Time slots
+const timeSlots = [
+  { value: 'morning', label: 'Morning', time: '8am - 12pm' },
+  { value: 'afternoon', label: 'Afternoon', time: '12pm - 4pm' },
+  { value: 'evening', label: 'Evening', time: '4pm - 8pm' }
+];
 
 const bookingForm = ref({
   service: '',
   date: '',
+  timeSlot: '',
   note: ''
 });
 
-const submitBooking = () => {
-  console.log('Booking submitted:', {
-    panditId: panditId.value,
-    ...bookingForm.value
-  });
-  alert('Booking request sent successfully!');
-  router.push({ name: 'home' });
+// Load provider details
+onMounted(async () => {
+  await loadProviderDetails();
+});
+
+const loadProviderDetails = async () => {
+  loading.value = true;
+  error.value = '';
+
+  try {
+    const response = await providersAPI.getProviderById(providerId.value);
+    const p = response.data;
+
+    provider.value = {
+      id: p.id,
+      religionType: p.religion_type,
+      type: p.religion_type === 'hindu' ? 'Pandit' : 'Lama',
+      name: `${p.religion_type === 'hindu' ? 'Pandit' : 'Lama'} ${p.user.first_name} ${p.user.last_name}`,
+      shortDescription: p.short_description,
+      description: p.short_description, // Use full description if available in your API
+      location: p.location,
+      experience: p.experience_years,
+      rating: p.average_rating,
+      priceFormatted: parseFloat(p.price_per_service).toLocaleString('en-NP'),
+      price: p.price_per_service,
+      profilePhoto: p.user.profile_photo,
+      services: p.services || []
+    };
+
+  } catch (err) {
+    console.error('Error loading provider:', err);
+    error.value = 'Failed to load provider details. Please try again.';
+  } finally {
+    loading.value = false;
+  }
+};
+
+// Calendar computed properties
+const currentMonthYear = computed(() => {
+  const months = ['January', 'February', 'March', 'April', 'May', 'June',
+                  'July', 'August', 'September', 'October', 'November', 'December'];
+  return `${months[currentDate.value.getMonth()]} ${currentDate.value.getFullYear()}`;
+});
+
+const calendarDates = computed(() => {
+  const year = currentDate.value.getFullYear();
+  const month = currentDate.value.getMonth();
+
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+  const prevLastDay = new Date(year, month, 0);
+
+  const firstDayOfWeek = firstDay.getDay();
+  const lastDate = lastDay.getDate();
+  const prevLastDate = prevLastDay.getDate();
+
+  const dates = [];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // Previous month dates
+  for (let i = firstDayOfWeek - 1; i >= 0; i--) {
+    const day = prevLastDate - i;
+    const date = new Date(year, month - 1, day);
+    dates.push({
+      day,
+      dateString: formatDate(date),
+      isOtherMonth: true,
+      isPast: date < today
+    });
+  }
+
+  // Current month dates
+  for (let day = 1; day <= lastDate; day++) {
+    const date = new Date(year, month, day);
+    dates.push({
+      day,
+      dateString: formatDate(date),
+      isOtherMonth: false,
+      isPast: date < today
+    });
+  }
+
+  // Next month dates
+  const remainingDays = 42 - dates.length;
+  for (let day = 1; day <= remainingDays; day++) {
+    const date = new Date(year, month + 1, day);
+    dates.push({
+      day,
+      dateString: formatDate(date),
+      isOtherMonth: true,
+      isPast: false
+    });
+  }
+
+  return dates;
+});
+
+// Calendar methods
+const formatDate = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const isDateSelected = (dateString) => {
+  return bookingForm.value.date === dateString;
+};
+
+const selectDate = (dateString) => {
+  bookingForm.value.date = dateString;
+  bookingForm.value.timeSlot = ''; // Reset time slot when date changes
+};
+
+const selectTimeSlot = (slot) => {
+  bookingForm.value.timeSlot = slot;
+};
+
+const previousMonth = () => {
+  currentDate.value = new Date(
+    currentDate.value.getFullYear(),
+    currentDate.value.getMonth() - 1,
+    1
+  );
+};
+
+const nextMonth = () => {
+  currentDate.value = new Date(
+    currentDate.value.getFullYear(),
+    currentDate.value.getMonth() + 1,
+    1
+  );
+};
+
+// Form validation
+const isFormValid = computed(() => {
+  return bookingForm.value.service &&
+         bookingForm.value.date &&
+         bookingForm.value.timeSlot;
+});
+
+// Helper function
+const getImageUrl = (photoPath) => {
+  if (!photoPath) return null;
+  if (photoPath.startsWith('http')) return photoPath;
+  return `http://localhost:8000${photoPath}`;
+};
+
+// Submit booking
+// Submit booking
+const submitBooking = async () => {
+  if (!isFormValid.value) return;
+
+  try {
+    const bookingData = {
+      provider: providerId.value,
+      service: bookingForm.value.service,
+      requested_date: bookingForm.value.date,  // Changed from 'date'
+      time_slot: bookingForm.value.timeSlot,
+      notes: bookingForm.value.note
+    };
+
+    console.log('Sending booking data:', bookingData);
+
+    const response = await bookingsAPI.createBooking(bookingData);
+    console.log('Booking response:', response);
+
+    alert('Booking request sent successfully!');
+    router.push({ name: 'home' });
+  } catch (err) {
+    console.error('Full error:', err);
+    console.error('Error response:', err.response?.data);
+    alert(`Failed to send booking request: ${err.response?.data?.detail || err.message}`);
+  }
 };
 </script>
 
@@ -135,6 +370,24 @@ const submitBooking = () => {
 .main-content {
   flex: 1;
   width: 100%;
+}
+
+.loading-container {
+  text-align: center;
+  padding: 60px 20px;
+  font-size: 18px;
+  color: #666;
+}
+
+.error-message {
+  max-width: 600px;
+  margin: 60px auto;
+  padding: 16px 24px;
+  background: #fee;
+  color: #c33;
+  border-radius: 8px;
+  text-align: center;
+  font-size: 14px;
 }
 
 .content-container {
@@ -168,6 +421,13 @@ const submitBooking = () => {
   flex-shrink: 0;
 }
 
+.profile-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+
 .image-placeholder {
   width: 100%;
   height: 100%;
@@ -199,6 +459,19 @@ const submitBooking = () => {
 .profile-address {
   font-size: 14px;
   color: #666;
+  margin-bottom: 8px;
+}
+
+.profile-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 13px;
+  color: #666;
+}
+
+.meta-item {
+  display: flex;
+  align-items: center;
 }
 
 .section-title {
@@ -277,7 +550,6 @@ const submitBooking = () => {
 }
 
 .form-select,
-.form-input,
 .form-textarea {
   padding: 12px 16px;
   border: 1px solid #E5D5C3;
@@ -289,7 +561,6 @@ const submitBooking = () => {
 }
 
 .form-select:focus,
-.form-input:focus,
 .form-textarea:focus {
   border-color: #AE664A;
 }
@@ -297,6 +568,130 @@ const submitBooking = () => {
 .form-textarea {
   resize: vertical;
   min-height: 100px;
+}
+
+/* Calendar Styles */
+.calendar-container {
+  border: 1px solid #E5D5C3;
+  border-radius: 8px;
+  padding: 16px;
+  background: white;
+}
+
+.calendar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.calendar-month {
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+}
+
+.calendar-nav {
+  background: none;
+  border: none;
+  font-size: 20px;
+  color: #AE664A;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background 0.2s ease;
+}
+
+.calendar-nav:hover {
+  background: #f5e6d3;
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.calendar-day-label {
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: #666;
+  padding: 8px 0;
+}
+
+.calendar-date {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: #333;
+}
+
+.calendar-date:hover:not(.disabled):not(.other-month) {
+  background: #f5e6d3;
+}
+
+.calendar-date.other-month {
+  color: #ccc;
+  cursor: default;
+}
+
+.calendar-date.selected {
+  background: #AE664A;
+  color: white;
+  font-weight: 600;
+}
+
+.calendar-date.disabled {
+  color: #ddd;
+  cursor: not-allowed;
+}
+
+/* Time Slots */
+.time-slots {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.time-slot {
+  padding: 12px 16px;
+  border: 1px solid #E5D5C3;
+  border-radius: 8px;
+  background: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+  font-family: 'Rubik', sans-serif;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.time-slot:hover {
+  border-color: #AE664A;
+  background: #f5e6d3;
+}
+
+.time-slot.selected {
+  background: #AE664A;
+  border-color: #AE664A;
+  color: white;
+}
+
+.slot-label {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.slot-time {
+  font-size: 12px;
+  opacity: 0.8;
 }
 
 .submit-button {
@@ -314,56 +709,13 @@ const submitBooking = () => {
   margin-top: 8px;
 }
 
-.submit-button:hover {
+.submit-button:hover:not(:disabled) {
   background: #9A5838;
 }
 
-/* Footer */
-.footer {
-  background: white;
-  border-top: 1px solid #E5E7EB;
-  padding: 40px;
-  margin-top: 60px;
-  width: 100%;
-}
-
-.footer-content {
-  max-width: 1200px;
-  margin: 0 auto;
-  display: flex;
-  justify-content: space-between;
-  gap: 60px;
-}
-
-.footer-section {
-  flex: 1;
-}
-
-.footer-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: #000;
-  margin-bottom: 16px;
-}
-
-.footer-text {
-  font-size: 14px;
-  color: #666;
-  margin-bottom: 8px;
-  line-height: 1.6;
-}
-
-.contact-support-link {
-  display: inline-block;
-  margin-top: 8px;
-  color: #AE664A;
-  text-decoration: none;
-  font-weight: 500;
-  font-size: 14px;
-}
-
-.contact-support-link:hover {
-  text-decoration: underline;
+.submit-button:disabled {
+  background: #ccc;
+  cursor: not-allowed;
 }
 
 /* Responsive Design */
@@ -381,11 +733,6 @@ const submitBooking = () => {
     flex-direction: column;
     align-items: center;
     text-align: center;
-  }
-
-  .footer-content {
-    flex-direction: column;
-    gap: 30px;
   }
 }
 </style>
