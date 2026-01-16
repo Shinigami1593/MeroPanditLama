@@ -1,23 +1,24 @@
 <template>
-    <footer class="footer">
-        <div class="footer-content">
-          <div class="footer-section">
-            <h3 class="footer-title">Contact Information</h3>
-            <p class="footer-text">Email: support@meropanditlama.com</p>
-            <p class="footer-text">Phone: +977 9800000806</p>
-            <p class="footer-text">Kathmandu, Nepal</p>
-          </div>
-          <div class="footer-section">
-            <h3 class="footer-title">Need Help?</h3>
-            <p class="footer-text">Our team is here to guide you</p>
-            <a href="#" class="contact-support-link">Contact Support</a>
-          </div>
-        </div>
-      </footer>
+  <footer class="footer">
+    <div class="footer-content">
+      <div class="footer-section">
+        <h3 class="footer-title">Contact Information</h3>
+        <p class="footer-text">Email: support@meropanditlama.com</p>
+        <p class="footer-text">Phone: +977 9800000806</p>
+        <p class="footer-text">Kathmandu, Nepal</p>
+      </div>
+      <div class="footer-section">
+        <h3 class="footer-title">Need Help?</h3>
+        <p class="footer-text">Our team is here to guide you</p>
+        <router-link to="/help" class="contact-support-link">Contact Support</router-link>
+      </div>
+    </div>
+  </footer>
 </template>
-<script>
 
+<script>
 </script>
+
 <style scoped>
 .footer {
   background: white;
@@ -60,6 +61,7 @@
   text-decoration: none;
   font-weight: 500;
   font-size: 14px;
+  cursor: pointer;
 }
 
 .contact-support-link:hover {
@@ -67,31 +69,6 @@
 }
 
 @media (max-width: 768px) {
-  .welcome-section {
-    padding: 40px 20px 30px;
-  }
-
-  .welcome-title {
-    font-size: 24px;
-  }
-
-  .booking-options {
-    flex-direction: column;
-    padding: 20px;
-  }
-
-  .profiles-section {
-    padding: 0 20px 40px;
-  }
-
-  .profiles-scroll {
-    gap: 16px;
-  }
-
-  .profile-card {
-    flex: 0 0 240px;
-  }
-
   .footer-content {
     flex-direction: column;
     gap: 30px;

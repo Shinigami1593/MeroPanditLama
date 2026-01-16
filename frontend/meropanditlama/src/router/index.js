@@ -66,6 +66,11 @@ const routes = [
     name: 'provider-profile',
     component: () => import('../views/pages/providers/ProviderProfileView.vue'),
   },
+  {
+    path: '/help',
+    name: 'help',
+    component: () => import('../views/HelpView.vue'),
+  },
 ]
 
 const router = createRouter({
