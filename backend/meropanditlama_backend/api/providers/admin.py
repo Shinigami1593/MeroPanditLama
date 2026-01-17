@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django import forms
 from .models import Service, ServiceProvider, AvailabilitySlot, Review
 
 @admin.register(Service)
@@ -21,7 +22,6 @@ class ServiceProviderAdmin(admin.ModelAdmin):
     ]
     filter_horizontal = ['services']
     readonly_fields = ['created_at', 'updated_at', 'average_rating', 'total_reviews']
-    
     fieldsets = (
         ('Provider Information', {
             'fields': ('user', 'religion_type', 'experience_years')
@@ -44,39 +44,113 @@ class ServiceProviderAdmin(admin.ModelAdmin):
             'classes': ('collapse',)
         }),
     )
-    
     actions = ['mark_verified', 'mark_unverified']
-    
+
     def get_provider_name(self, obj):
         return obj.user.get_full_name()
     get_provider_name.short_description = 'Provider Name'
     get_provider_name.admin_order_field = 'user__first_name'
-    
+
     def mark_verified(self, request, queryset):
         updated = queryset.update(verified=True)
         self.message_user(request, f'{updated} provider(s) marked as verified.')
     mark_verified.short_description = 'Mark selected as verified'
-    
+
     def mark_unverified(self, request, queryset):
         updated = queryset.update(verified=False)
         self.message_user(request, f'{updated} provider(s) marked as unverified.')
     mark_unverified.short_description = 'Mark selected as unverified'
 
+
+# Custom form for AvailabilitySlot with checkboxes
+class AvailabilitySlotAdminForm(forms.ModelForm):
+    """Custom form to show time slots as checkboxes"""
+    
+    time_slots = forms.MultipleChoiceField(
+        choices=AvailabilitySlot.TIME_SLOT_CHOICES,
+        widget=forms.CheckboxSelectMultiple,
+        required=True,
+        help_text="Select one or more time slots for this date"
+    )
+    
+    class Meta:
+        model = AvailabilitySlot
+        fields = ['provider', 'date', 'notes']
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # If editing existing slot, pre-select the time slot
+        if self.instance and self.instance.pk:
+            self.fields['time_slots'].initial = [self.instance.time_slot]
+    
+    def save(self, commit=True):
+        # This method won't be used directly as we handle saving in the admin
+        return super().save(commit=commit)
+
+
 @admin.register(AvailabilitySlot)
 class AvailabilitySlotAdmin(admin.ModelAdmin):
+    form = AvailabilitySlotAdminForm
     list_display = [
-        'get_provider_name', 'date', 'start_time',
-        'end_time', 'is_booked', 'created_at'
+        'get_provider_name', 'date', 'time_slot',
+        'is_booked', 'created_at'
     ]
-    list_filter = ['is_booked', 'date', 'created_at']
+    list_filter = ['is_booked', 'time_slot', 'date', 'created_at']
     search_fields = ['provider__user__first_name', 'provider__user__last_name']
     date_hierarchy = 'date'
-    ordering = ['-date', 'start_time']
+    ordering = ['-date', 'time_slot']
+    readonly_fields = ['is_booked', 'created_at']
     
     def get_provider_name(self, obj):
         return obj.provider.user.get_full_name()
     get_provider_name.short_description = 'Provider'
     get_provider_name.admin_order_field = 'provider__user__first_name'
+    
+    def save_model(self, request, obj, form, change):
+        """Override save to handle multiple time slots"""
+        # Get the selected time slots from the form
+        time_slots = form.cleaned_data.get('time_slots', [])
+        
+        if change:
+            # If editing, just update the single slot
+            if time_slots:
+                obj.time_slot = time_slots[0]
+            super().save_model(request, obj, form, change)
+        else:
+            # If creating new, create a slot for each selected time slot
+            provider = form.cleaned_data['provider']
+            date = form.cleaned_data['date']
+            notes = form.cleaned_data.get('notes', '')
+            
+            created_count = 0
+            for time_slot in time_slots:
+                # Check if slot already exists
+                if not AvailabilitySlot.objects.filter(
+                    provider=provider,
+                    date=date,
+                    time_slot=time_slot
+                ).exists():
+                    AvailabilitySlot.objects.create(
+                        provider=provider,
+                        date=date,
+                        time_slot=time_slot,
+                        notes=notes
+                    )
+                    created_count += 1
+            
+            if created_count > 0:
+                self.message_user(
+                    request,
+                    f'{created_count} availability slot(s) created successfully.',
+                    level='SUCCESS'
+                )
+            else:
+                self.message_user(
+                    request,
+                    'No new slots created. Slots may already exist for selected times.',
+                    level='WARNING'
+                )
+
 
 @admin.register(Review)
 class ReviewAdmin(admin.ModelAdmin):
@@ -92,11 +166,11 @@ class ReviewAdmin(admin.ModelAdmin):
     ]
     readonly_fields = ['created_at', 'updated_at']
     ordering = ['-created_at']
-    
+
     def get_user_name(self, obj):
         return obj.user.get_full_name()
     get_user_name.short_description = 'User'
-    
+
     def get_provider_name(self, obj):
         return obj.provider.user.get_full_name()
     get_provider_name.short_description = 'Provider'

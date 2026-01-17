@@ -110,15 +110,29 @@ class ServiceProvider(models.Model):
 
 class AvailabilitySlot(models.Model):
     """Provider availability time slots"""
-    
+    TIME_SLOT_CHOICES = [
+        ('morning', 'Morning (8am - 12pm)'),
+        ('afternoon', 'Afternoon (12pm - 4pm)'),
+        ('evening', 'Evening (4pm - 8pm)'),
+    ]
+
     provider = models.ForeignKey(
         ServiceProvider,
         on_delete=models.CASCADE,
         related_name='availability_slots'
     )
     date = models.DateField(db_index=True)
-    start_time = models.TimeField()
-    end_time = models.TimeField()
+    time_slot = models.CharField(
+        max_length=10,
+        choices=TIME_SLOT_CHOICES,
+        db_index=True,
+        default='morning',
+        help_text="Time slot for the availability"
+    )
+
+
+    # start_time = models.TimeField(blank=True,null=True)
+    # end_time = models.TimeField(blank=True,null=True)
     is_booked = models.BooleanField(
         default=False,
         db_index=True,
@@ -129,19 +143,19 @@ class AvailabilitySlot(models.Model):
     
     class Meta:
         db_table = 'availability_slots'
-        ordering = ['date', 'start_time']
-        unique_together = [['provider', 'date', 'start_time']]
+        ordering = ['date', 'time_slot']
+        unique_together = [['provider', 'date', 'time_slot']]
         verbose_name = 'Availability Slot'
         verbose_name_plural = 'Availability Slots'
     
     def __str__(self):
-        return f"{self.provider.user.get_full_name()} - {self.date} {self.start_time}-{self.end_time}"
+        return f"{self.provider.user.get_full_name()} - {self.date} {self.get_time_slot_display()}"
     
-    def clean(self):
-        """Validate that end_time is after start_time"""
-        from django.core.exceptions import ValidationError
-        if self.end_time <= self.start_time:
-            raise ValidationError('End time must be after start time')
+    # def clean(self):
+    #     """Validate that end_time is after start_time"""
+    #     from django.core.exceptions import ValidationError
+    #     if self.end_time <= self.start_time:
+    #         raise ValidationError('End time must be after start time')
 
 class Review(models.Model):
     """User reviews for providers"""

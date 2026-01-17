@@ -70,6 +70,11 @@
             <h2 class="booking-title">Book This Service</h2>
             <p class="booking-price">Starts at NPR {{ provider.priceFormatted }}</p>
 
+            <!-- Auth Warning -->
+            <div v-if="!isAuthenticated" class="auth-warning">
+              <p>⚠️ Please <router-link to="/login" class="login-link">log in</router-link> to make a booking</p>
+            </div>
+
             <form @submit.prevent="submitBooking" class="booking-form">
               <div class="form-group">
                 <label class="form-label">Select Service</label>
@@ -112,7 +117,19 @@
               <!-- Time Slots -->
               <div class="form-group" v-if="bookingForm.date">
                 <label class="form-label">Select Time Slot</label>
-                <div class="time-slots">
+
+                <!-- Loading state -->
+                <div v-if="loadingSlots" class="slots-loading">
+                  <p>Loading available slots...</p>
+                </div>
+
+                <!-- No slots available -->
+                <div v-else-if="timeSlots.length === 0" class="no-slots-message">
+                  <p>⚠️ No available time slots for this date. Please select another date.</p>
+                </div>
+
+                <!-- Available slots -->
+                <div v-else class="time-slots">
                   <button
                     type="button"
                     v-for="slot in timeSlots"
@@ -151,11 +168,11 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import Navbar from '../../../components/NavbarComponent.vue';
 import Footer from '../../../components/FooterComponent.vue';
-import { providersAPI, bookingsAPI } from '@/axios';
+import { providersAPI, bookingsAPI, getUserData } from '@/axios';
 
 const route = useRoute();
 const router = useRouter();
@@ -166,12 +183,19 @@ const error = ref('');
 const provider = ref(null);
 const showSuccessMessage = ref(false);
 const isSubmitting = ref(false);
+const loadingSlots = ref(false);
+const availableTimeSlots = ref([]);
+
+// Authentication state
+const isAuthenticated = ref(false);
+const user = ref(null);
+
 // Calendar state
 const currentDate = ref(new Date());
 const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-// Time slots
-const timeSlots = [
+// All possible time slots
+const allTimeSlots = [
   { value: 'morning', label: 'Morning', time: '8am - 12pm' },
   { value: 'afternoon', label: 'Afternoon', time: '12pm - 4pm' },
   { value: 'evening', label: 'Evening', time: '4pm - 8pm' }
@@ -184,8 +208,84 @@ const bookingForm = ref({
   note: ''
 });
 
+// Check authentication helper
+const checkAuth = () => {
+  const token = localStorage.getItem('token');
+  return !!token;
+};
+
+// Update authentication state
+const updateAuthState = () => {
+  isAuthenticated.value = checkAuth();
+  user.value = getUserData();
+  console.log('Auth state updated:', { isAuthenticated: isAuthenticated.value, user: user.value });
+};
+
+// Computed property for available time slots based on selected date
+const timeSlots = computed(() => {
+  return allTimeSlots.filter(slot =>
+    availableTimeSlots.value.includes(slot.value)
+  );
+});
+
+// Watch for date changes and fetch available slots
+watch(() => bookingForm.value.date, async (newDate, oldDate) => {
+  console.log('📅 Date changed from', oldDate, 'to', newDate);
+
+  if (newDate) {
+    await fetchAvailableSlots(newDate);
+  } else {
+    console.log('Date cleared, resetting slots');
+    availableTimeSlots.value = [];
+  }
+  // Reset time slot when date changes
+  bookingForm.value.timeSlot = '';
+});
+
+// Watch for route changes to update auth state
+router.afterEach(() => {
+  updateAuthState();
+});
+
+// Fetch available time slots for selected date
+const fetchAvailableSlots = async (date) => {
+  loadingSlots.value = true;
+
+  console.log('=== FETCHING AVAILABILITY ===');
+  console.log('Provider ID:', providerId.value);
+  console.log('Date:', date);
+
+  try {
+    const response = await providersAPI.getProviderAvailability(providerId.value, date);
+
+    console.log('Full API Response:', response);
+    console.log('Response data:', response.data);
+    console.log('Available slots from API:', response.data.available_slots);
+
+    availableTimeSlots.value = response.data.available_slots || [];
+
+    console.log('Available slots set to:', availableTimeSlots.value);
+    console.log('Filtered time slots:', timeSlots.value);
+
+    if (availableTimeSlots.value.length === 0) {
+      console.warn('⚠️ No available slots for this date');
+    } else {
+      console.log('✅ Found', availableTimeSlots.value.length, 'available slots');
+    }
+  } catch (err) {
+    console.error('❌ Error fetching availability:', err);
+    console.error('Error response:', err.response);
+    console.error('Error message:', err.message);
+    availableTimeSlots.value = [];
+  } finally {
+    loadingSlots.value = false;
+    console.log('=== FETCH COMPLETE ===');
+  }
+};
+
 // Load provider details
 onMounted(async () => {
+  updateAuthState(); // Check authentication on mount
   await loadProviderDetails();
 });
 
@@ -203,7 +303,7 @@ const loadProviderDetails = async () => {
       type: p.religion_type === 'hindu' ? 'Pandit' : 'Lama',
       name: `${p.religion_type === 'hindu' ? 'Pandit' : 'Lama'} ${p.user.first_name} ${p.user.last_name}`,
       shortDescription: p.short_description,
-      description: p.short_description, // Use full description if available in your API
+      description: p.short_description,
       location: p.location,
       experience: p.experience_years,
       rating: p.average_rating,
@@ -282,7 +382,6 @@ const calendarDates = computed(() => {
   return dates;
 });
 
-
 // Calendar methods
 const formatDate = (date) => {
   const year = date.getFullYear();
@@ -297,7 +396,6 @@ const isDateSelected = (dateString) => {
 
 const selectDate = (dateString) => {
   bookingForm.value.date = dateString;
-  bookingForm.value.timeSlot = ''; // Reset time slot when date changes
 };
 
 const selectTimeSlot = (slot) => {
@@ -323,8 +421,8 @@ const nextMonth = () => {
 // Form validation
 const isFormValid = computed(() => {
   return bookingForm.value.service &&
-  bookingForm.value.date &&
-  bookingForm.value.timeSlot;
+         bookingForm.value.date &&
+         bookingForm.value.timeSlot;
 });
 
 // Helper function
@@ -335,9 +433,15 @@ const getImageUrl = (photoPath) => {
 };
 
 // Submit booking
-// Submit booking
 const submitBooking = async () => {
   if (!isFormValid.value) return;
+
+  // Check authentication first
+  if (!isAuthenticated.value) {
+    alert('Please log in to make a booking');
+    router.push('/login');
+    return;
+  }
 
   isSubmitting.value = true;
 
@@ -358,9 +462,24 @@ const submitBooking = async () => {
     // Show success message
     showSuccessMessage.value = true;
 
+    // Reset form
+    bookingForm.value = {
+      service: '',
+      date: '',
+      timeSlot: '',
+      note: ''
+    };
+
   } catch (err) {
     console.error('Full error:', err);
     console.error('Error response:', err.response?.data);
+
+    // Handle specific error cases
+    if (err.response?.status === 401) {
+      alert('Your session has expired. Please log in again.');
+      router.push('/login');
+      return;
+    }
 
     // Show error message
     let errorMessage = 'Failed to send booking request. ';
@@ -572,6 +691,22 @@ const closeSuccessMessage = () => {
   margin-bottom: 24px;
 }
 
+.auth-warning {
+  background: #FEF3C7;
+  border: 1px solid #F59E0B;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 20px;
+  font-size: 14px;
+  color: #92400E;
+}
+
+.login-link {
+  color: #AE664A;
+  font-weight: 600;
+  text-decoration: underline;
+}
+
 .booking-form {
   display: flex;
   flex-direction: column;
@@ -694,6 +829,32 @@ const closeSuccessMessage = () => {
 }
 
 /* Time Slots */
+.slots-loading {
+  padding: 20px;
+  text-align: center;
+  color: #666;
+  font-size: 14px;
+  background: #f9f9f9;
+  border-radius: 8px;
+  border: 1px solid #E5D5C3;
+}
+
+.no-slots-message {
+  padding: 16px;
+  background: #FEF3C7;
+  border: 1px solid #F59E0B;
+  border-radius: 8px;
+  color: #92400E;
+  font-size: 14px;
+}
+
+.no-slots-message p {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .time-slots {
   display: flex;
   flex-direction: column;
@@ -759,23 +920,7 @@ const closeSuccessMessage = () => {
   cursor: not-allowed;
 }
 
-/* Responsive Design */
-@media (max-width: 768px) {
-  .content-container {
-    grid-template-columns: 1fr;
-    padding: 40px 20px;
-  }
-
-  .booking-section {
-    position: static;
-  }
-
-  .profile-header {
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-  }
-}
+/* Success Modal */
 .success-overlay {
   position: fixed;
   top: 0;
@@ -876,5 +1021,23 @@ const closeSuccessMessage = () => {
 
 .success-button:hover {
   background: #9A5838;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .content-container {
+    grid-template-columns: 1fr;
+    padding: 40px 20px;
+  }
+
+  .booking-section {
+    position: static;
+  }
+
+  .profile-header {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
 }
 </style>

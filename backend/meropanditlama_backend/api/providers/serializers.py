@@ -47,26 +47,20 @@ class ServiceProviderDetailSerializer(serializers.ModelSerializer):
 
 class AvailabilitySlotSerializer(serializers.ModelSerializer):
     """Availability slot serializer"""
+    time_slot_display = serializers.CharField(source='get_time_slot_display', read_only=True)
     
     class Meta:
         model = AvailabilitySlot
-        fields = ['id', 'date', 'start_time', 'end_time', 'is_booked', 'notes']
+        fields = ['id', 'date', 'time_slot', 'time_slot_display', 'is_booked', 'notes']
         read_only_fields = ['is_booked']
-    
-    def validate(self, attrs):
-        """Validate time slot"""
-        if attrs['end_time'] <= attrs['start_time']:
-            raise serializers.ValidationError({
-                'end_time': 'End time must be after start time'
-            })
-        return attrs
+
 
 class AvailabilitySlotCreateSerializer(serializers.ModelSerializer):
     """Serializer for creating availability slots"""
     
     class Meta:
         model = AvailabilitySlot
-        fields = ['date', 'start_time', 'end_time', 'notes']
+        fields = ['date', 'time_slot', 'notes']
     
     def create(self, validated_data):
         # Provider is set from request.user in the view

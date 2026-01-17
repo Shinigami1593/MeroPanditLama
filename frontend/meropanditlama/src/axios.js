@@ -86,7 +86,12 @@ export const authAPI = {
 export const providersAPI = {
   getProviders: (params = {}) => apiClient.get('/providers/', { params }),
   getProviderById: (id) => apiClient.get(`/providers/${id}/`),
-  getProviderAvailability: (id, params) => apiClient.get(`/providers/${id}/availability/`, { params }),
+  getProviderAvailability: (id, date) => {
+    console.log('🔍 Calling availability API for provider:', id, 'date:', date);
+    return apiClient.get(`/providers/${id}/availability/`, {
+      params: { date }
+    });
+  },
   getProviderReviews: (id) => apiClient.get(`/providers/${id}/reviews/`),
 }
 
@@ -167,7 +172,7 @@ export const clearAuth = () => {
 
 export const logout = () => {
   clearAuth()
-  window.location.href = '/login'
+  window.location.href = '/'
 }
 
 export default apiClient

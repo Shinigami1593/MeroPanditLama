@@ -13,7 +13,7 @@
           <div class="video-wrapper">
             <iframe
               class="video-iframe"
-              src="https://youtu.be/BCP7SmWmI8E"
+              src="https://youtube.com/embed/BCP7SmWmI8E"
               title="MeroPanditLama Tutorial"
               frameborder="0"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"

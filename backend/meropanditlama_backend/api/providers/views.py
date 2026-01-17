@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django_filters.rest_framework import DjangoFilterBackend
 from django.shortcuts import get_object_or_404
+from django.utils.dateparse import parse_date
 from datetime import datetime, timedelta
 
 from .models import Service, ServiceProvider, AvailabilitySlot, Review
@@ -40,8 +41,41 @@ class ServiceProviderViewSet(viewsets.ReadOnlyModelViewSet):
             return ServiceProviderDetailSerializer
         return ServiceProviderListSerializer
     
+    @action(detail=True, methods=['get'], url_path='availability')
+    def get_availability(self, request, pk=None):
+        """Get available time slots for a specific provider and date"""
+        provider = self.get_object()
+        date_str = request.query_params.get('date')
+        
+        if not date_str:
+            return Response(
+                {'error': 'Date parameter is required (YYYY-MM-DD format)'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        requested_date = parse_date(date_str)
+        if not requested_date:
+            return Response(
+                {'error': 'Invalid date format. Use YYYY-MM-DD'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Get available slots for this provider on this date (not booked)
+        available_slots = AvailabilitySlot.objects.filter(
+            provider=provider,
+            date=requested_date,
+            is_booked=False
+        ).values_list('time_slot', flat=True)
+        
+        return Response({
+            'provider_id': provider.id,
+            'provider_name': provider.user.get_full_name(),
+            'date': date_str,
+            'available_slots': list(available_slots)
+        })
+    
     @action(detail=True, methods=['get'])
-    def availability(self, request, pk=None):
+    def availability_range(self, request, pk=None):
         """Get provider availability for date range"""
         provider = self.get_object()
         date_from = request.query_params.get('date_from')
@@ -64,7 +98,7 @@ class ServiceProviderViewSet(viewsets.ReadOnlyModelViewSet):
             provider=provider,
             date__gte=date_from,
             date__lte=date_to
-        ).order_by('date', 'start_time')
+        ).order_by('date', 'time_slot')
         
         serializer = AvailabilitySlotSerializer(slots, many=True)
         return Response({
@@ -181,7 +215,7 @@ def provider_availability(request):
             except ValueError:
                 pass
         
-        slots = slots.order_by('date', 'start_time')
+        slots = slots.order_by('date', 'time_slot')
         serializer = AvailabilitySlotSerializer(slots, many=True)
         return Response({
             'availability': serializer.data
